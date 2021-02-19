@@ -1,0 +1,30 @@
+#######################################
+# Syntax Coloring Map for Lorafactory
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+Lorafactory	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+setled	KEYWORD2
+reset	KEYWORD2
+connect	KEYWORD2
+recieve	KEYWORD2
+transmit	KEYWORD2
+set_maskBit	KEYWORD2
+reset_maskBit	KEYWORD2
+get_data	KEYWORD2
+set_data	KEYWORD2
+library_version	KEYWORD2
+signal_power	KEYWORD2
+command	KEYWORD2
+#######################################
+# Constants (LITERAL1)
+#######################################
+
