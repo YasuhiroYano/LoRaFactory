@@ -13,6 +13,9 @@ Lorafactory	KEYWORD1
 #######################################
 
 setled	KEYWORD2
+ledpattern	KEYWORD2
+ledjob	KEYWORD2
+sleepmode	KEYWORD2
 reset	KEYWORD2
 connect	KEYWORD2
 recieve	KEYWORD2

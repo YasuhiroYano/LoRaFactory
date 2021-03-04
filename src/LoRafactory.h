@@ -57,10 +57,13 @@ private:
   char * _send_data[_LF_MAX_DATANUM];
   uint8_t _send_data_num;
   uint8_t _cordinator;
+  uint8_t _sleepmode;
   uint16_t _panid;
   uint16_t _ownid;
   uint16_t _recid;
   int16_t _rssi;
+  int8_t _ledptn;
+
   char _command;
   char _buff[_LF_MAX_BUFF]; //tx,rx buffer
   char _data_str[_LF_MAX_DATANUM][_LF_MAX_DATASIZE];
@@ -73,7 +76,11 @@ private:
   // public methods
   void setled(int ptn);
   void setled(int pin,int ptn);
+  void ledpattern(int8_t ptn){_ledptn=ptn;}
+  void ledjob(int ledpin);
+  void ledjob();
   bool reset();
+  void sleepmode(){if(_cordinator==0) _sleepmode=1;}//Sleepmode‚ð—LŒø‚É‚·‚é
   bool connect(uint16_t dstid);
   bool recieve();
   bool transmit();

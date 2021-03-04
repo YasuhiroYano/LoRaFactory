@@ -3,7 +3,7 @@ LoRafactory.h
 This library is only for Uno like board TYPE 3276-500.
 Made by http://www.kkyes.co.jp/
 Private LoRa module EASEL ES920LR https://easel5.com/
-v1.01 2021.02.10 
+v1.02 2021.03.02  
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -56,7 +56,8 @@ LoRafactory::LoRafactory(uint8_t cordinator, uint16_t panid,uint16_t ownid,uint8
     _command=' ';
     pinMode(ES_RESET, OUTPUT);
     digitalWrite(ES_RESET, HIGH);
-    pinMode(ES_SLEEP, INPUT_PULLUP);
+    pinMode(ES_SLEEP, OUTPUT);
+    digitalWrite(ES_SLEEP, LOW);
     pinMode(LEDPIN, OUTPUT);
     digitalWrite(LEDPIN, HIGH);
     EsSerial.begin(9600);
@@ -165,6 +166,7 @@ bool LoRafactory::connect(uint16_t dstid){
     ES_comm("rcvid 1","OK",1);
     ES_comm("rssi 1","OK",1);
     ES_comm("dstid ",dstid,"OK",1);
+    if(_sleepmode) ES_comm("sleep 3","OK",1);
     return ES_comm("start","OK",1);
  }
 void LoRafactory::set_data(uint8_t index,long  data){
@@ -191,9 +193,11 @@ bool LoRafactory::transmit(char *s){
 }
 
 bool LoRafactory::transmit(){
+    bool rtn = true;
     int8_t i;
     uint8_t io;
     char s[_LF_MAX_STRING];
+    digitalWrite(ES_SLEEP, LOW);
     io=PIND>>2;
     io+=PINB<<6;
     ctoh(_buff,io);
@@ -204,8 +208,9 @@ bool LoRafactory::transmit(){
         strcat(_buff,",");
         strcat(_buff,_send_data[i]);
     }
-    if(!ES_comm(_buff,"OK",5))return false;
-    return true;
+    if(!ES_comm(_buff,"OK",5)) rtn = false;
+    if(_sleepmode) digitalWrite(ES_SLEEP, LOW);   
+    return rtn;
  }
 
  bool LoRafactory::rec_header(void){
@@ -240,7 +245,7 @@ void LoRafactory::setled(int ptn) {
 }
 void LoRafactory::setled(int ledpin,int ptn) {
   static int i;
-  if (ptn < 0) {  //
+  if (ptn == -1) {  //ƒgƒOƒ‹
     i = i ? 0 : 1;
     digitalWrite(ledpin, i);
     return;
@@ -261,4 +266,60 @@ void LoRafactory::setled(int ledpin,int ptn) {
     digitalWrite(ledpin, HIGH);
   }
   delay(1000);
+}
+void LoRafactory::ledjob(){
+    ledjob(LEDPIN);
+}
+void LoRafactory::ledjob(int ledpin){//10msec‚ÌŠ„‚èž‚Ý‚ÅŒÄ‚Ño‚·‚æ‚¤‚É
+    static int8_t sta=0;
+    static int8_t ptn=0;
+    static int8_t t=0;
+    switch(sta){
+        case 0:
+            ptn=_ledptn;
+            if(_ledptn == -1) sta=1;
+            else if(_ledptn == 0) sta=2;
+            else if(_ledptn > 0)sta=10;
+            break;
+        case 1:
+            digitalWrite(ledpin,1- digitalRead(ledpin));
+            sta=100;
+            break;
+        case 2:
+            digitalWrite(ledpin,LOW);
+            sta=100;
+            break;
+        case 10:
+            digitalWrite(ledpin,LOW);
+            t=100;
+            sta++;
+            break;
+        case 11:
+            if(--t)break;
+            digitalWrite(ledpin,HIGH);
+            t=30;
+            sta++;
+            break;
+        case 12:
+            if(--t)break;
+            digitalWrite(ledpin,LOW);
+            t=30;
+            sta++;
+            break;
+        case 13:
+            if(--t)break;
+            digitalWrite(ledpin,HIGH);
+            if(--_ledptn > 0){
+               t=30;
+               sta=12;
+            }  else sta=100;
+            break;
+        case 100:            
+            digitalWrite(ledpin,HIGH);
+            _ledptn=-2;
+            sta=0;
+            break;
+        default:
+            sta=0;            
+    }
 }
