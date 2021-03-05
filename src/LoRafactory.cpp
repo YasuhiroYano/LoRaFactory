@@ -112,14 +112,14 @@ bool LoRafactory::ES_comm(char *cmd,char *ret,float tim){
         delay(1);
         t++;
         while(EsSerial.available()){
+            t=0;
             c=EsSerial.read();
             _buff[p++]=c;
             if(p >= _LF_MAX_BUFF) p = _LF_MAX_BUFF-1;
-            if(c=='\r' ){
-                _buff[p]=0;
+            if(c=='\n' ){
+                _buff[p-1]=0;
                 if(strstr(_buff,ret)) return true; 
-                p=0;//flush when another responce 
-   //             Serial.println(_buff);
+    //             Serial.println(_buff);
             }
         }
     }
@@ -225,7 +225,7 @@ bool LoRafactory::transmit(){
     s[2]=0;
     change_io(htoi(s));
     _command=_buff[14];
-    return true;
+     return true;
  }
 bool LoRafactory::recieve(){
     int8_t i;
