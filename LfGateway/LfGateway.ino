@@ -1,6 +1,7 @@
 /*  LoRafactory WiFi Gateway　
-   　Ver1.0　2021/01/15 KK.YES 矢野
-   　Ver1.1　2021/02/07 KK.YES 矢野
+   Ver1.0　2021/01/15 KK.YES 矢野
+   Ver1.1　2021/02/07 KK.YES 矢野
+   Ver1.2 2021/03/13 KK.YES 矢野 帯域幅、拡散係数変更に伴う変更
    This library is only for Uno like bord TYPE 3276-500.
    Made by http://www.kkyes.co.jp/
    Private LoRa module EASEL ES920LR https://easel5.com/
@@ -8,7 +9,7 @@
    WiFi module ESP-WROOM-02
 */
 //WiFi の接続情報
-const char* ssid = "GUEST";//利用するWiFiの合わせて変更
+const char* ssid = "YESGUEST";//利用するWiFiの合わせて変更
 const char* password = "YESGUEST";//利用するWiFiの合わせて変更
 #define SCHDULE 8 //定刻通信時刻
 
@@ -23,18 +24,22 @@ struct EnddeviceInfo inftbl[] = {
   { 0x100, "31852", "5e047e050a8a4047",
     "GvlMd5Wzmgbuop9E1JGjSOnFmiP4m1xt65O7szYXnxh"
   },//漏水監視１　
+  { 0x200, "33443", "26e1a1847e0a4b74",
+    "GvlMd5Wzmgbuop9E1JGjSOnFmiP4m1xt65O7szYXnxh"
+  },//イノシシ罠１　テストのために漏水監視と同じにしている　要変更　
   //Enddevice（子機）が増えたときにここに追加登録する
   {0, 0, "", ""} //最後のデータはlf_id=0とする
 };
 #define INFNUM (sizeof(inftbl)/sizeof(EnddeviceInfo))
 int8_t Sendflg[INFNUM];
 char *LineMsg[] = {
-  "定時通報 異常なし。 https://ambidata.io/bd/board.html?id=21973# ",
-  "漏水の恐れがあります。 https://ambidata.io/bd/board.html?id=21973# ",
-  "水道が使用されていません。 https://ambidata.io/bd/board.html?id=21973# ",
-  "!!捕獲!!　確認に来てください",
-  "本日の来訪者人数　約",
-  "パンフレットが無くなりました。補充してください。",
+  " 定時通報 異常なし。 https://ambidata.io/bd/board.html?id=21973# ",
+  " 漏水の恐れがあります。 https://ambidata.io/bd/board.html?id=21973# ",
+  " 水道が使用されていません。 https://ambidata.io/bd/board.html?id=21973# ",
+  " イノシシ罠　定時通報 異常なし。 ",
+  " !!イノシシ捕獲!!　確認に来てください",
+  " 本日の来訪者人数　約",
+  " パンフレットが無くなりました。補充してください。",
   ""
 };
 #define MSGNUM (sizeof(LineMsg)/sizeof(char *))
@@ -42,6 +47,8 @@ char *LineMsg[] = {
 LoRafactory Lf(1, 10, 0, 2, 2);  //cordinator
 //(cordinator,panid,ownid,receiveNum,transmitNum);
 uint16_t Destid = 0x10;
+#define CONNECT() Lf.connect(Destid,3,10) //bw=3(62.5k) sf=10
+
 #define MAX_BUF 80
 char buf[MAX_BUF];//受信文字数　最大80
 
@@ -54,12 +61,11 @@ void setup() {
   Lf.setled(Ledpin, 1);
   Serial.println(" LoRafactory WiFi Gateway v1.00 PAN=10");
   //デバック情報としてシリアルに出力するときは1文字目はスペースにする。(重要)
-  if (Lf.connect(Destid)) {
+  if (CONNECT()) {
     Serial.println(" LoRa Connected");
     Lf.setled(Ledpin, 2); //送信先を指定して接続
   }
   if (WifiConnect()) Lf.setled(Ledpin, 3); //WiFiに接続 max20sec
-  //  AmbientConnect();
 }
 
 void loop() {
@@ -86,6 +92,13 @@ void loop() {
           Sendflg[inf] = 1;
         }
         break;
+      case 'T'://WROOM-02に対してAmbientにRSSIを送るよう要求する
+        AmbientSendRssi(inf);
+        if (!Sendflg[inf]) {//定時通報　LINEにメッセージを送る
+          LineSend(inf);
+          Sendflg[inf] = 1;
+        }
+        break;
       case 'L'://WROOM-02に対してLINEにメッセージを送るよう要求する
         LineSend(inf);
         break;
@@ -106,10 +119,8 @@ void clearTimeFlg(char *s) { //定時になったら送信フラグをクリア�
   int i;
   int hr = atoi(s);
   if (hr != hour0 && hr == SCHDULE) {
-    for (i = 0; i < INFNUM; i++) {
-      Sendflg[i] = 0;
-      hour0 = hr;
-    }
+    for (i = 0; i < INFNUM; i++)      Sendflg[i] = 0;
+    hour0 = hr;
   }
 }
 bool rec(char *s, unsigned long t) {
@@ -142,7 +153,7 @@ void Rssi() {
   Serial.println("RSSI");
   if ( Destid != Lf.recid()) { //接続先が異なる場合はリセットして再接続する
     Destid = Lf.recid();
-    if (Lf.connect(Destid)) {
+    if (CONNECT()) {
       Lf.setled(Ledpin, 2); //送信先を指定して接続
       Serial.print(" Reconnect to ");
       Serial.println(Destid);
@@ -162,6 +173,15 @@ void AmbientSend(int inf) {
   Serial.print(Lf.get_data(2));
   Serial.print(",");
   Serial.println(Lf.get_data(3));
+}
+void AmbientSendRssi(int inf) {
+  AmbientConnect(inf);
+  Serial.print("S");
+  Serial.print(Lf.get_data(0));
+  Serial.print(",");
+  Serial.print(Lf.get_data(1));
+  Serial.print(",");
+  Serial.println(Lf.rssi());
 }
 bool WifiConnect() {
   Serial.print("W");

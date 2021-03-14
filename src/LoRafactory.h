@@ -70,6 +70,7 @@ private:
  
   bool ES_comm(char *cmd,char *ret,float tim);
   bool ES_comm(char *cmd,uint16_t id,char *ret,float tim);
+  bool ES_comm(char *cmd,int8_t data,char *ret,float tim);
   void change_io(uint8_t rxio);
   bool rec_header(void);
   public:
@@ -81,7 +82,8 @@ private:
   void ledjob();
   bool reset();
   void sleepmode(){if(_cordinator==0) _sleepmode=1;}//Sleepmode‚ğ—LŒø‚É‚·‚é
-  bool connect(uint16_t dstid);
+  bool connect(uint16_t dstid);//bw=4(125k) sf=7 default 
+  bool connect(uint16_t dstid,int8_t bw,int8_t sf);//Ex bw=3(62.5k) sf=9 default ‚Ì4”{‚Ì’ÊMŠÔ  
   bool recieve();
   bool transmit();
   bool transmit(char *s);

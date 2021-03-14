@@ -131,6 +131,12 @@ bool LoRafactory::ES_comm(char *cmd,uint16_t id,char *ret,float tim){
     strcpy(_buff,cmd); strcat(_buff,s);  
     return ES_comm(_buff,ret,tim);
 }
+bool LoRafactory::ES_comm(char *cmd,int8_t data,char *ret,float tim){
+    char s[10];
+    sprintf(s, "%d", data);
+    strcpy(_buff,cmd); strcat(_buff,s);  
+    return ES_comm(_buff,ret,tim);
+}
 
 void LoRafactory::change_io(uint8_t rxio){
     uint16_t mask=_mask;
@@ -155,19 +161,23 @@ bool LoRafactory::reset(){
     return true;
 }
   
-  
-bool LoRafactory::connect(uint16_t dstid){
+bool LoRafactory::connect(uint16_t dstid,int8_t bw,int8_t sf){
     reset();
     ES_comm("","Select",3);
     ES_comm("2","OK",2);
     if(_cordinator)   ES_comm("node 1","OK",1);
     else ES_comm("node 2","OK",1);
+    if(bw>=3 && bw<=6)  ES_comm("bw ",bw,"OK",1);
+    if(sf>=7 && sf<=12)  ES_comm("sf ",sf,"OK",1);
     ES_comm("ownid ",_ownid,"OK",1);
     ES_comm("rcvid 1","OK",1);
     ES_comm("rssi 1","OK",1);
     ES_comm("dstid ",dstid,"OK",1);
     if(_sleepmode) ES_comm("sleep 3","OK",1);
     return ES_comm("start","OK",1);
+}
+bool LoRafactory::connect(uint16_t dstid){
+   connect(dstid,-1,-1);
  }
 void LoRafactory::set_data(uint8_t index,long  data){
     sprintf(_data_str[index],"%ld",data);
@@ -197,8 +207,11 @@ bool LoRafactory::transmit(){
     int8_t i;
     uint8_t io;
     char s[_LF_MAX_STRING];
-    digitalWrite(ES_SLEEP, LOW);
-    io=PIND>>2;
+    if(_sleepmode){
+        digitalWrite(ES_SLEEP, LOW);
+        delay(5);
+    }
+     io=PIND>>2;
     io+=PINB<<6;
     ctoh(_buff,io);
     _buff[2]=_command;
@@ -209,7 +222,7 @@ bool LoRafactory::transmit(){
         strcat(_buff,_send_data[i]);
     }
     if(!ES_comm(_buff,"OK",5)) rtn = false;
-    if(_sleepmode) digitalWrite(ES_SLEEP, LOW);   
+    if(_sleepmode) digitalWrite(ES_SLEEP, HIGH);   
     return rtn;
  }
 
