@@ -2,6 +2,7 @@
    Ver1.0　2021/01/15 KK.YES 矢野
    Ver1.1　2021/02/07 KK.YES 矢野
    Ver1.2 2021/03/13 KK.YES 矢野 帯域幅、拡散係数変更に伴う変更
+   Ver1.3 2021/04/27 KK.YES 明石 中継器からの中継データ受信対応
    This library is only for Uno like bord TYPE 3276-500.
    Made by http://www.kkyes.co.jp/
    Private LoRa module EASEL ES920LR https://easel5.com/
@@ -24,14 +25,19 @@ struct EnddeviceInfo inftbl[] = {
   { 0x100, "31852", "5e047e050a8a4047",
     "GvlMd5Wzmgbuop9E1JGjSOnFmiP4m1xt65O7szYXnxh"
   },//漏水監視１　
+  
   { 0x200, "33443", "26e1a1847e0a4b74",
-    "GvlMd5Wzmgbuop9E1JGjSOnFmiP4m1xt65O7szYXnxh"
-  },//イノシシ罠１　テストのために漏水監視と同じにしている　要変更　
+    "3cNGx99ndIchqOPicymQfK9F70JiwIIN1AlsfbjLLmj"
+  },//イノシシ罠　　
+  
+  { 0x300, "34372", "7f52f0571be732bd",
+    "3cNGx99ndIchqOPicymQfK9F70JiwIIN1AlsfbjLLmj"
+  },//イノシシ中継罠　　
+  
   //Enddevice（子機）が増えたときにここに追加登録する
   {0, 0, "", ""} //最後のデータはlf_id=0とする
 };
 #define INFNUM (sizeof(inftbl)/sizeof(EnddeviceInfo))
-int8_t Sendflg[INFNUM];
 char *LineMsg[] = {
   " 定時通報 異常なし。 https://ambidata.io/bd/board.html?id=21973# ",
   " 漏水の恐れがあります。 https://ambidata.io/bd/board.html?id=21973# ",
@@ -52,14 +58,18 @@ uint16_t Destid = 0x10;
 #define MAX_BUF 80
 char buf[MAX_BUF];//受信文字数　最大80
 
+#define ENDDEVICENUM 10  //中継器を含まない子機数が10を超えるときに変更
+int LineSendflg[ENDDEVICENUM][2];  //中継器から中継されてきた子機一覧を保持する     
 
 int Ledpin = 7;
 void setup() {
+  int i;
+  
   delay(1000);
   Serial.begin(57600);//115200bauではWROOM-02からのデータを取れない　
   pinMode(Ledpin, OUTPUT);
   Lf.setled(Ledpin, 1);
-  Serial.println(" LoRafactory WiFi Gateway v1.00 PAN=10");
+  Serial.println(" LoRafactory WiFi Gateway v1.3 PAN=10");
   //デバック情報としてシリアルに出力するときは1文字目はスペースにする。(重要)
   if (CONNECT()) {
     Serial.println(" LoRa Connected");
@@ -70,7 +80,10 @@ void setup() {
 
 void loop() {
   int inf;
-  if (Lf.recieve()) {//データ配列を受信
+  int deviceid = 0;
+  int arraypos = 0;
+
+  if (Lf.recieve()) {//データ配列を受信   
     inf = lookupid(Lf.recid());
     if (inf == -1) {
       Serial.print(" !Unknown Enddevice rec id=");
@@ -80,27 +93,29 @@ void loop() {
     Serial.print(" rec id=");
     Serial.print(Lf.recid());
     Serial.print(" RSSI=");
-    Serial.println(Lf.rssi());
+    Serial.print(Lf.rssi());
+    Serial.print(" inf=");
+    Serial.println(inf);
     switch (Lf.command()) {
-      case 'R'://受信強度を送り返す
-        Rssi();
-        break;
-      case 'A'://WROOM-02に対してAmbientにデータを送るよう要求する
-        AmbientSend(inf);
-        if (!Sendflg[inf]) {//定時通報　LINEにメッセージを送る
-          LineSend(inf);
-          Sendflg[inf] = 1;
-        }
-        break;
       case 'T'://WROOM-02に対してAmbientにRSSIを送るよう要求する
         AmbientSendRssi(inf);
-        if (!Sendflg[inf]) {//定時通報　LINEにメッセージを送る
-          LineSend(inf);
-          Sendflg[inf] = 1;
+        if(checkDailySend(Lf.recid())){
+            LineSend(inf,Lf.recid());          
         }
         break;
+      case 'P': //中継器経由でｽﾃｰﾀｽ送信
+        AmbientRepeater(inf);
+        deviceid = atoi( Lf.get_data(3));
+        if(checkDailySend(deviceid)){
+            LineSend(inf,deviceid);          
+        }
+        break;
+      case 'C': //中継器経由でLINE送信
+        deviceid = atoi( Lf.get_data(3));
+        LineSend(inf,deviceid);
+        break;
       case 'L'://WROOM-02に対してLINEにメッセージを送るよう要求する
-        LineSend(inf);
+        LineSend(inf,Lf.recid());
         break;
     }
     Lf.setled(Ledpin, 1);
@@ -116,12 +131,14 @@ void loop() {
 }
 void clearTimeFlg(char *s) { //定時になったら送信フラグをクリアする
   static int hour0;
-  int i;
+  int i,j;
   int hr = atoi(s);
-  if (hr != hour0 && hr == SCHDULE) {
-    for (i = 0; i < INFNUM; i++)      Sendflg[i] = 0;
-    hour0 = hr;
+  if (hr != hour0 && hr == SCHDULE){
+    for(i = 0;i < ENDDEVICENUM; i++){
+          LineSendflg[i][1] = 0;
+    }      
   }
+  hour0 = hr;
 }
 bool rec(char *s, unsigned long t) {
   while (t) {
@@ -149,56 +166,50 @@ bool rec() {
   }
   return false;
 }
-void Rssi() {
-  Serial.println("RSSI");
-  if ( Destid != Lf.recid()) { //接続先が異なる場合はリセットして再接続する
-    Destid = Lf.recid();
-    if (CONNECT()) {
-      Lf.setled(Ledpin, 2); //送信先を指定して接続
-      Serial.print(" Reconnect to ");
-      Serial.println(Destid);
-    }
-  }
-  Lf.set_data(0, Lf.rssi());
-  Lf.set_data(1, 0); //拡張用
-  Lf.transmit();
-}
-void AmbientSend(int inf) {
+void AmbientRepeater(int inf) { //中継器経由での子機情報をAmbientへ送信
   AmbientConnect(inf);
   Serial.print("S");
-  Serial.print(Lf.get_data(0));
+  Serial.print(Lf.get_data(0)); //ｽﾃｰﾀｽ
   Serial.print(",");
-  Serial.print(Lf.get_data(1));
+  Serial.print(Lf.get_data(1)); //ｲﾝｸﾘﾒﾝﾄ
   Serial.print(",");
-  Serial.print(Lf.get_data(2));
+  Serial.print(Lf.get_data(2)); //子機電圧
   Serial.print(",");
-  Serial.println(Lf.get_data(3));
+  Serial.print(Lf.get_data(3)); //ID
+  Serial.print(",");
+  Serial.print(Lf.get_data(4)); //中継器電圧
+  Serial.print(",");
+  Serial.print(Lf.get_data(5)); //中継器電流
+  Serial.print(",");
+  Serial.println(Lf.get_data(6)); //子機電波強度
 }
-void AmbientSendRssi(int inf) {
+
+void AmbientSendRssi(int inf) { //子機情報をAmbientへ送信
   AmbientConnect(inf);
   Serial.print("S");
-  Serial.print(Lf.get_data(0));
+  Serial.print(Lf.get_data(0)); //ｽﾃｰﾀｽ
   Serial.print(",");
-  Serial.print(Lf.get_data(1));
+  Serial.print(Lf.get_data(1)); //ｲﾝｸﾘﾒﾝﾄ
   Serial.print(",");
-  Serial.println(Lf.rssi());
+  Serial.print(Lf.get_data(2)); //子機電圧
+  Serial.print(",");
+  Serial.println(Lf.rssi());    //子機電波強度
 }
-bool WifiConnect() {
+bool WifiConnect() {  //Wifi接続
   Serial.print("W");
   Serial.print(ssid);
   Serial.print(",");
   Serial.println(password);
   return rec("IP address", 60000);
 }
-bool AmbientConnect(int inf) {
+bool AmbientConnect(int inf) {  //Ambient接続
   Serial.print("A");
   Serial.print(inftbl[inf].ambientChannelId);
   Serial.print(",");
   Serial.println(inftbl[inf].ambientwriteKey);
   return true;
 }
-
-void LineSend(int inf) {
+void LineSend(int inf,int id) { //LINE 送信処理
   int msgno = 0;
   msgno = atoi( Lf.get_data(0));
   if (msgno < 0 || msgno >= MSGNUM) {
@@ -209,14 +220,35 @@ void LineSend(int inf) {
   Serial.print("L");
   Serial.print(inftbl[inf].lineNotifyToken);
   Serial.print(", id=");
-  Serial.print(Lf.recid());
+  Serial.print(id);
   Serial.println(LineMsg[msgno]);
 }
-int lookupid(int lf_id) {
+
+int lookupid(int lf_id) { //line idの検索
   int i;
-  for (i = 0; i < 20; i++) {
+  for (i = 0; i < INFNUM; i++) {
     if (inftbl[i].lf_id == 0) return -1;
     if (inftbl[i].lf_id == lf_id)break;
   }
   return i;
+}
+
+bool checkDailySend(int id){ //中継された子機がLINEの1日1回通報を実行済が確認して未送信ならtrue 送信済みならfalseを返す
+  int i;
+  for(i=0;i<ENDDEVICENUM;i++){
+    if(LineSendflg[i][0]==0){ //登録されていないIDなら値を設定して送信する
+      LineSendflg[i][0] = id;
+      LineSendflg[i][1] = 1;
+      return true;
+    }else if(LineSendflg[i][0]==id){  //idが存在して未送信なら送信する
+      if(LineSendflg[i][1]==0){
+        LineSendflg[i][1] = 1;
+        return true;
+      }else{
+        return false;
+      }
+    }
+  }
+  
+  return false;  
 }

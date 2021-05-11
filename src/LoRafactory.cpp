@@ -106,7 +106,6 @@ bool LoRafactory::ES_comm(char *cmd,char *ret,float tim){
     char c;
     if(strlen(cmd)){
         EsSerial.println(cmd);
- //        Serial.println(cmd);
     }
     while(t<tmax){
         delay(1);
@@ -119,7 +118,6 @@ bool LoRafactory::ES_comm(char *cmd,char *ret,float tim){
             if(c=='\n' ){
                 _buff[p-1]=0;
                 if(strstr(_buff,ret)) return true; 
-    //             Serial.println(_buff);
             }
         }
     }
@@ -170,6 +168,7 @@ bool LoRafactory::connect(uint16_t dstid,int8_t bw,int8_t sf){
     if(bw>=3 && bw<=6)  ES_comm("bw ",bw,"OK",1);
     if(sf>=7 && sf<=12)  ES_comm("sf ",sf,"OK",1);
     ES_comm("ownid ",_ownid,"OK",1);
+    ES_comm("panid ",_panid,"OK",1);
     ES_comm("rcvid 1","OK",1);
     ES_comm("rssi 1","OK",1);
     ES_comm("dstid ",dstid,"OK",1);
@@ -207,11 +206,12 @@ bool LoRafactory::transmit(){
     int8_t i;
     uint8_t io;
     char s[_LF_MAX_STRING];
+    while(EsSerial.available()) EsSerial.read();//初回のエラーを回避
     if(_sleepmode){
         digitalWrite(ES_SLEEP, LOW);
         delay(5);
     }
-     io=PIND>>2;
+    io=PIND>>2;
     io+=PINB<<6;
     ctoh(_buff,io);
     _buff[2]=_command;
@@ -222,6 +222,7 @@ bool LoRafactory::transmit(){
         strcat(_buff,_send_data[i]);
     }
     if(!ES_comm(_buff,"OK",5)) rtn = false;
+    delay(5);//2021/5/2  これがないとACK受信が間に合わず複数回送信することが発生する
     if(_sleepmode) digitalWrite(ES_SLEEP, HIGH);   
     return rtn;
  }
@@ -258,7 +259,7 @@ void LoRafactory::setled(int ptn) {
 }
 void LoRafactory::setled(int ledpin,int ptn) {
   static int i;
-  if (ptn == -1) {  //�g�O��
+  if (ptn == -1) { 
     i = i ? 0 : 1;
     digitalWrite(ledpin, i);
     return;
@@ -283,7 +284,7 @@ void LoRafactory::setled(int ledpin,int ptn) {
 void LoRafactory::ledjob(){
     ledjob(LEDPIN);
 }
-void LoRafactory::ledjob(int ledpin){//10msec�̊��荞�݂ŌĂяo���悤��
+void LoRafactory::ledjob(int ledpin){//10msec
     static int8_t sta=0;
     static int8_t ptn=0;
     static int8_t t=0;
